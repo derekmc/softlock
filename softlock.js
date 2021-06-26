@@ -6,8 +6,8 @@ function assert(test, message){
 // this is the server only.
 function kvrev(){
   let X = {};
-  let values = {};
-  let revisions = {};
+  let values = X.values = {};
+  let revisions = X.revisions = {};
 
   // revisions
   X.get = (...args) => {
@@ -23,13 +23,16 @@ function kvrev(){
         }
         let v = values[k];
         let r = revisions[k] ?? 0;
+        // console.log('k, v, r', k, v, r);
 
         // keys prefixed with ":" return the revision only.
         return_values.push(skip? null : v);
         return_revisions.push(r);
       }
+      // console.log('return_values', return_values);
+      // console.log('return_revisions', return_revisions);
       // if(Math.random() < 0.0001) return no("Not today.");
-      return yes(return_values, return_revisions);
+      return yes([return_values, return_revisions]);
     });
   }
   X.set = (locks, ...args) => {
@@ -89,17 +92,17 @@ function kvrev(){
 }
 
 
-// this is the client/server combo
-function softlock(){
+// this is the client.
+function Softlock(db){
 
   let X = {};
   let __config
   let config_props = {};
-  let db = kvrev();
+  if(!db) db = kvrev();
   
 
   X.config = function(k, v){
-    if(!(k in config_props){
+    if(!(k in config_props)){
       return false; }
     __config[k] = v;
   }
@@ -107,37 +110,52 @@ function softlock(){
 
   X.query = function(){
     let Q = {};
-    let values = {};
-    let locked_revisions = {};
+
+    // the datasets which this query interacts with.
     let getitems = {};
     let lockitems = {};
     let peekitems = {};
+
     let assign = {};
+    let locked_revisions = {};
 
     Q.ready = false;
     Q.finished = false;
     Q.values = {};
     Q.revisions = {};
 
-    Q.lock = function(...args){
+    Q.lock = (...args) => {
       for(let i=0; i<args.length; ++i){
         lockitems[args[i]] = true;
       }
     }
-    Q.get = function(...args){
+    Q.get = (...args) => {
       for(let i=0; i<args.length; ++i){
         getitems[args[i]] = true;
       }
     }
-    Q.peek = function(...args){
+    Q.peek = (...args) => {
       for(let i=0; i<args.length; ++i){
         peekitems[args[i]] = true;
       }
     }
-    Q.set = function(...args){
+    Q.set = (...args) => {
       for(let i=0; i<args.length - 1; ++i){
         assign[args[i]] = args[i+1];
       }
+    }
+    // clear any cached data saved or assignments made.
+    Q.clearData = () => {
+      assign = {};
+      locked_revisions = {};
+    }
+    // reset the query, all variables are forgotten and data is cleared.
+    Q.reset = () => {
+      assign = {};
+      locked_revisions = {};
+      getitems = {}
+      setitems = {}
+      peekitems = {}
     }
 
 
@@ -147,8 +165,17 @@ function softlock(){
       if(Q.ready){
         return new Promise((yes, no) => {
           Q.ready = false;
-          db.set(locked_revisions, ...assign).then({
+          let changes = [];
+          for(let k in assign){
+            changes.push(k, assign[k]);
+          }
+          db.set(locked_revisions, ...changes).then(()=>{
             Q.finished = true;
+            return yes(true);
+          }, () => {
+            assign = {};
+            locked_revisions = {};
+            return no(true);
           });
         })
       } else {
@@ -164,8 +191,10 @@ function softlock(){
             if(!(k in getitems) && !(k in peekitems)){ 
               getargs.push(":" + k); }
           }
-          db.get(getargs).then((items, revs)=>{
+          db.get(...getargs).then(async ([items, revs])=>{
             Q.ready = true;
+            await (new Promise((yes, no)=> setTimeout(yes, 1000)));
+            // console.log('items, revs', items, revs, getargs);
             for(let i=0; i<getargs.length; ++i){
               let key = getargs[i];
               if(key[0] == ":") key = key.substr(1);
@@ -174,21 +203,75 @@ function softlock(){
               if((key in getitems) || (key in lockitems)){
                 locked_revisions[key] = rev;
               }
+              // console.log('key, item', key, item);
+              Q.values[key] = item;
             }
-          });
+            yes(false);
+          }, no);
         });
       }
     }
     return Q;
   }
-
   return X;
 }
 
-module.imports = softlock;
+module.imports = Softlock;
 
-function main(){
-  
+main();
+async function main(){
+  let db = kvrev();
+  let softlock = Softlock(db);
+  let query = softlock.query();
+  query.get('a');
+  while(!query.fail && !(await query.submit())){
+    console.log('submitted');
+    if(query.ready){
+      console.log('performing transaction.');
+      let a = query.values['a'] ?? 0;
+      let r = query.revisions['a'];
+      //console.log(`The current revision for key 'a' is '${r}'`);
+      query.set('a', a+3);
+    }
+  }
+  console.log('query finished.');
+
+  let [[a], _] = await db.get('a');
+  console.log('a', a);
+  console.log('db', db);
+
+  query.reset();
+  //query = softlock.query();
+  //query.get('a');
+
+  while(!query.fail && !(await query.submit())){
+    if(query.ready){
+      console.log('in query db', db);
+      let a = query.values['a'] ?? 0;
+      let r = query.revisions['a'];
+      console.log('a, rev', a, r);
+      query.set('a', a+2);
+    }
+  }
+
+  [[a], _] = await db.get('a');
+  console.log('a', a);
+  console.log('db', db);
+  /*
+  */
+
+
+  /*
+
+  while(!query.fail && await query.submit()){
+    if(query.ready){
+      let a = query.values['a'] ?? 0;
+      let r = query.revisions['a'];
+      console.log(`The current revision for key 'a' is '${r}'`);
+      query.set('a', a+1);
+    }
+  }
+  */
 }
 
 
