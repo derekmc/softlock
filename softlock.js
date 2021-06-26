@@ -53,6 +53,12 @@ function kvrev(){
     })
   }
 
+  X.dump = (filename) => {
+  }
+
+  X.load = (filename) => {
+  }
+
   // if the key is a tuple(or has a comma), then the second item is the revision.
   /*
   X.set = (...args) => {
@@ -240,9 +246,7 @@ async function main(){
   console.log('a', a);
   console.log('db', db);
 
-  query.reset();
-  //query = softlock.query();
-  //query.get('a');
+  query.clearData();
 
   while(!query.fail && !(await query.submit())){
     if(query.ready){
