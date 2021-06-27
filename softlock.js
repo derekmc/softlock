@@ -9,6 +9,48 @@ function kvrev(){
   let values = X.values = {};
   let revisions = X.revisions = {};
 
+  // dummy server imitates a websocket protocol
+  X.dummyServer = ()=>{
+    let S = {};
+    let clients = [];
+    let client_events = ["message", "close"];
+    S.connect = ()=>{
+      let C = {};
+      let handlers = {};
+      clients.push(C);
+      C.on = (eventname, handler)=>{
+        if(!client_events.includes(eventname)){
+          throw new Error(`Unknown event "${eventname}"`);
+        }
+        handlers[eventname] = handler;
+      }
+
+      let buffer = "";
+      C.send = (message)=>{
+        // every time we get a newline, send a command.
+        let i = 0;
+        while((i = message.indexOf("\n")) >= 0){
+          let command = buffer + message;
+          (async ()=> {
+            let response = await X.command(command);
+            handlers["message"](response);
+          })();
+          message = message.substring(i + 1);
+        }
+        buffer = message;
+      }
+      return C;
+    }
+    return S;
+  }
+
+  X.command = (s) => {
+    return new Promise((yes, no) => {
+      // TODO
+      yes("TODO implement");
+    })
+  }
+
   // revisions
   X.get = (...args) => {
     return new Promise((yes, no) => {
@@ -150,7 +192,7 @@ function Softlock(db){
         assign[args[i]] = args[i+1];
       }
     }
-    // clear any cached data saved or assignments made.
+    // clear any cached data saved or assignments queued.
     Q.clearData = () => {
       assign = {};
       locked_revisions = {};
