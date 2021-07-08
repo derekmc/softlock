@@ -9,6 +9,7 @@ function kvrev(){
   let values = X.values = {};
   let revisions = X.revisions = {};
 
+  let clientLocks = {};
   // dummy server imitates a websocket protocol
   X.dummyServer = ()=>{
     let S = {};
@@ -47,7 +48,7 @@ function kvrev(){
   // commands have an action
   // arguments start after the first space,
   // and arguments are separated by commas.
-  X.command = (s) => {
+  X.command = (s, clientIndex) => {
     let i = s.indexOf(" ");
     let action = s.substring(0, i);
     let rest = "";
@@ -63,12 +64,39 @@ function kvrev(){
       else if(c == ","){
         args.push(rest.substr(0, j));
         rest = rest.substr(j);
+        j = 0;
       }
     }
     
     return new Promise((yes, no) => {
       // if(i < 0) return no("
+      if(action == "revision"){
+        X.revision(args...);
+      }
       if(action == "get"){
+        X.get(args...);
+      }
+      if(action == "set"){
+        let locks = null;
+        if(clientIndex != undefined){
+          locks = clientLocks[clientIndex];
+        }
+        X.set(locks, args...)
+      }
+      if(action == "lock"){
+        if(clientIndex == undefined){
+          throw new error("Cannot lock when client index undefined";
+        }
+
+        let locks;
+        if(!(clientIndex in clientLocks)){
+          clientLocks[clientIndex] = {};
+        }
+        locks = clientLocks[clientIndex];
+
+        for(let i=0; i<args.length - 1; i+=2){
+          locks[args[i]] = args[i+1];
+        }
       }
       // TODO
       yes("TODO implement");
@@ -103,7 +131,7 @@ function kvrev(){
   }
   X.set = (locks, ...args) => {
     return new Promise((yes, no) => {
-      for(let k in locks){
+      if(locks) for(let k in locks){
         let r = revisions[k] ?? 0;
         if(r != locks[k]){
           return no(`Outdated key '${k}'`);
@@ -116,6 +144,17 @@ function kvrev(){
         revisions[k] = (revisions[k]?? 0) + 1;
       }
       return yes(args.length/2);
+    })
+  }
+  X.revision = (...args) => {
+    return new Promise((yes, no) => {
+      let result = [];
+      for(let i=0; i<args.length; ++i){
+        let k = args[k];
+        let r = revisions[k] ?? 0;
+        result.push(r);
+      }
+      yes(result);
     })
   }
 
