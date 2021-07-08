@@ -44,8 +44,32 @@ function kvrev(){
     return S;
   }
 
+  // commands have an action
+  // arguments start after the first space,
+  // and arguments are separated by commas.
   X.command = (s) => {
+    let i = s.indexOf(" ");
+    let action = s.substring(0, i);
+    let rest = "";
+    if(i<0) i = s.length;
+    else rest = s.substring(i+1);
+    let args = [];
+    for(let j=0; j<rest.length; ++j){
+      let c = rest[j];
+      // double quotes only.
+      if(rest[j] == "\\") ++j;
+      else if(c == "\""){
+        while(rest[++j] != "\""); }
+      else if(c == ","){
+        args.push(rest.substr(0, j));
+        rest = rest.substr(j);
+      }
+    }
+    
     return new Promise((yes, no) => {
+      // if(i < 0) return no("
+      if(action == "get"){
+      }
       // TODO
       yes("TODO implement");
     })
