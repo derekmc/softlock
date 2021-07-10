@@ -67,25 +67,28 @@ function kvrev(){
         j = 0;
       }
     }
+    args.push(rest);
     
-    return new Promise((yes, no) => {
-      // if(i < 0) return no("
-      if(action == "revision"){
-        X.revision(args...);
+    // if(i < 0) return no("
+    //console.log('command action args', action, args);
+    if(action == "revision"){
+      return X.revision(...args);
+    }
+    if(action == "get"){
+      return X.get(...args);
+    }
+    if(action == "set"){
+      let locks = null;
+      if(clientIndex != undefined){
+        locks = clientLocks[clientIndex];
       }
-      if(action == "get"){
-        X.get(args...);
-      }
-      if(action == "set"){
-        let locks = null;
-        if(clientIndex != undefined){
-          locks = clientLocks[clientIndex];
-        }
-        X.set(locks, args...)
-      }
-      if(action == "lock"){
+      return X.set(locks, ...args)
+    }
+
+    if(action == "lock"){
+      return new Promise((yes, no) => {
         if(clientIndex == undefined){
-          throw new error("Cannot lock when client index undefined";
+          throw new error("Cannot lock when client index undefined");
         }
 
         let locks;
@@ -97,10 +100,11 @@ function kvrev(){
         for(let i=0; i<args.length - 1; i+=2){
           locks[args[i]] = args[i+1];
         }
-      }
-      // TODO
-      yes("TODO implement");
-    })
+        yes(true);
+        // TODO
+        // yes("TODO implement");
+      })
+    }
   }
 
   // revisions
@@ -347,7 +351,8 @@ async function main(){
   }
   console.log('query finished.');
 
-  let [[a], _] = await db.get('a');
+  //let [[a], _] = await db.get('a');
+  let [[a], _] = await db.command('get a');
   console.log('a', a);
   console.log('db', db);
 
