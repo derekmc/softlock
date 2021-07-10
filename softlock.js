@@ -10,39 +10,83 @@ function kvrev(){
   let revisions = X.revisions = {};
 
   let clientLocks = {};
-  // dummy server imitates a websocket protocol
-  X.dummyServer = ()=>{
-    let S = {};
-    let clients = [];
-    let client_events = ["message", "close"];
-    S.connect = ()=>{
-      let C = {};
-      let handlers = {};
-      clients.push(C);
-      C.on = (eventname, handler)=>{
-        if(!client_events.includes(eventname)){
-          throw new Error(`Unknown event "${eventname}"`);
-        }
-        handlers[eventname] = handler;
-      }
 
-      let buffer = "";
-      C.send = (message)=>{
-        // every time we get a newline, send a command.
-        let i = 0;
-        while((i = message.indexOf("\n")) >= 0){
-          let command = buffer + message;
-          (async ()=> {
-            let response = await X.command(command);
-            handlers["message"](response);
-          })();
-          message = message.substring(i + 1);
-        }
-        buffer = message;
+  // dummy server imitates a websocket protocol
+
+  let clients = [];
+  let client_events = ["open", "message", "close"];
+  X.dummyClient = ()=>{
+    let C = {};
+    let handlers = {};
+
+    clients.push(C);
+    let clientIndex = clients.length;
+
+    C.on = (eventname, handler)=>{
+      if(!client_events.includes(eventname)){
+        throw new Error(`Unknown event "${eventname}"`);
       }
-      return C;
+      handlers[eventname] = handler;
+      if(eventname == "open"){
+        handlers["open"]();
+      }
     }
-    return S;
+
+    let buffer = "";
+    C.send = (message)=>{
+      // every time we get a newline, send a command.
+      let i = 0;
+      let rest = message;
+      while((i = rest.indexOf("\n")) >= 0){
+        let cmdtext = buffer + rest.substring(0,i);
+        rest = rest.substring(i);
+        (async ()=> {
+          let response = await X.command(cmdtext, clientIndex);
+          handlers["message"](response.join(","));
+        })();
+      }
+      buffer = rest;
+    }
+    return C;
+  }
+
+  // one line of commands always matches one line of responses.
+  X.wrapClient = (client)=>{
+    let W = {};
+    let responseIndex = -1;
+    let actionPromiseCallbacks = [];
+
+    let buffer = "";
+
+    client.on("message", (data)=>{
+      let i=0;
+      let rest = data;
+      while((i = rest.indexOf("\n")) >= 0){
+        let response = buffer + rest.substring(0,i);
+        rest = rest.substring(i);
+        (async ()=>{
+          let callbacks = actionPromiseCallbacks[++responseIndex];
+          if(callbacks.call == "get"){
+            let array = response.split(",");
+            let mid = Math.floor(array.length/2);
+            callbacks.yes([array.slice(0,mid), array.slice(mid)]);
+          }
+        })()
+      }
+    })
+
+    W.get = (...args) => {
+      return new Promise((yes, no) => {
+        actions.push({yes, no, call: "get"});
+      });
+      
+      //client
+    }
+    W.set = (...args) => {
+    }
+    W.revision = (...args) => {
+    }
+    return W;
   }
 
   // commands have an action
@@ -69,7 +113,7 @@ function kvrev(){
     }
     args.push(rest);
     
-    // if(i < 0) return no("
+    // if(i < 0) return no("");
     //console.log('command action args', action, args);
     if(action == "revision"){
       return X.revision(...args);
@@ -333,8 +377,16 @@ function Softlock(db){
 
 module.imports = Softlock;
 
-main();
-async function main(){
+test();
+function test(){
+  testlocal();
+}
+
+async function testclient(){
+  let softlock = Softlock(kvrev)
+}
+
+async function testlocal(){
   let db = kvrev();
   let softlock = Softlock(db);
   let query = softlock.query();
