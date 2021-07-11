@@ -33,7 +33,7 @@ function kvrev(){
     }
 
     let buffer = "";
-    C.send = (message)=>{
+    C.send = (message)=> {
       // every time we get a newline, send a command.
       let i = 0;
       let rest = message;
@@ -48,6 +48,44 @@ function kvrev(){
       buffer = rest;
     }
     return C;
+  }
+
+  X.server = (port)=> {
+    port = port ?? 8030;
+    const WebSocket = require('ws');
+    let clientCount = 0;
+    const wss = new WebSocket.Server({
+      port: port });
+
+    wss.on('connection', (ws)=> {
+      clients.push(ws);
+      let clientIndex = ++clientCount;
+      let buffer = "";
+      ws.on('message', (message)=> {
+        C.send = (message)=>{
+          // every time we get a newline, send a command.
+          let i = 0;
+          let rest = message;
+          while((i = rest.indexOf("\n")) >= 0){
+            let cmdtext = buffer + rest.substring(0,i);
+            rest = rest.substring(i);
+            (async ()=> {
+              let response = await X.command(cmdtext, clientIndex);
+              ws.send(response.join(","));
+            })();
+          }
+          buffer = rest;
+        }
+        X.cmd();
+      })
+    })
+    console.log(`server listening on port ${port}.`);
+  }
+
+
+
+
+  X.rawServer = (port)=>{
   }
 
   // one line of commands always matches one line of responses.
@@ -379,11 +417,32 @@ module.imports = Softlock;
 
 test();
 function test(){
-  testlocal();
+  //testlocal();
+  //testclient();
+  testserver();
+  //testboth();
+}
+
+async function testserver(){
+  let db = kvrev();
+  let server = db.server();
+
 }
 
 async function testclient(){
-  let softlock = Softlock(kvrev)
+  let db = kvrev();
+  let softlock = Softlock(db);
+
+  let client = softlock.dummyClient();
+}
+
+async function testboth(){
+  let db = kvrev();
+  let server = db.server();
+
+  // TODO create websocket client
+  // let client = server
+  let api = softlock.wrapClient(client);
 }
 
 async function testlocal(){
